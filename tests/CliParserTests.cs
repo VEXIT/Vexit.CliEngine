@@ -72,6 +72,45 @@ public class CliParserTests
         parsed.ValidationErrors.Should().Contain("--port is required.");
     }
 
+    [Fact]
+    public void Parse_NullableBooleanTriState_OptIn_BareFlag_Sets_True()
+    {
+        var parser = new CliParser();
+        var cmd = new OptInCommand();
+
+        var parsed = parser.Parse(cmd, ["--opt-in"]);
+        parsed.ApplyToCommand(cmd);
+
+        parsed.HasValidationErrors.Should().BeFalse();
+        cmd.OptIn.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Parse_NullableBooleanTriState_OptIn_EqualsFalse_Sets_False()
+    {
+        var parser = new CliParser();
+        var cmd = new OptInCommand();
+
+        var parsed = parser.Parse(cmd, ["--opt-in=false"]);
+        parsed.ApplyToCommand(cmd);
+
+        parsed.HasValidationErrors.Should().BeFalse();
+        cmd.OptIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Parse_NullableBooleanTriState_OptIn_Omitted_Stays_Null()
+    {
+        var parser = new CliParser();
+        var cmd = new OptInCommand();
+
+        var parsed = parser.Parse(cmd, []);
+        parsed.ApplyToCommand(cmd);
+
+        parsed.HasValidationErrors.Should().BeFalse();
+        cmd.OptIn.Should().BeNull();
+    }
+
     private sealed class DeployCommand : CmdBase
     {
         [Argument("name", isRequired: true)]
@@ -103,5 +142,11 @@ public class CliParserTests
     {
         [Option("port", isRequired: true)]
         public int Port { get; set; }
+    }
+
+    private sealed class OptInCommand : CmdBase
+    {
+        [Option("opt-in", description: "Tri-state opt-in flag")]
+        public bool? OptIn { get; set; }
     }
 }

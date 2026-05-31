@@ -34,6 +34,7 @@ public static class CliUtil
         public const ConsoleColor Error = ConsoleColor.Red;
         public const ConsoleColor Warning = ConsoleColor.Yellow;
         public const ConsoleColor Info = ConsoleColor.Cyan;
+        public const ConsoleColor Code = ConsoleColor.DarkGreen;
         public const ConsoleColor Primary = ConsoleColor.White;
         public const ConsoleColor Secondary = ConsoleColor.DarkGray;
         // Formatting Colors
@@ -79,6 +80,10 @@ public static class CliUtil
     {
         WriteLite(message, indent, true);
     }
+    public static void WriteLnCode(string message, int indent = 0)
+    {
+        WriteCode(message, indent, true);
+    }
 
     //-----------------------------------------
     // Write contextual with new line optional (default is false)    
@@ -107,6 +112,10 @@ public static class CliUtil
     {
         Write(message, Color.Lite, newLine, indent);
     }
+    public static void WriteCode(string message, int indent = 0, bool newLine = false)
+    {
+        Write(message, Color.Code, newLine, indent);
+    }
 
     public static void WriteLabel(string message, int indent = 0, ConsoleColor color = Color.Primary)
     {
@@ -130,6 +139,7 @@ public static class CliUtil
     ///  &lt; s&gt;text&lt;/ s&gt; (success/darkgreen) <br />
     ///  &lt; d&gt;text&lt;/ d&gt; (dim/darkgray) <br />
     ///  &lt; l&gt;text&lt;/ l&gt; (lite/gray) <br />
+    ///  &lt; c&gt;text&lt;/ c&gt; (code/darkgreen) <br />
     /// Text outside tags uses default color.
     /// </summary>
     /// <param name="text">Text with XML-like formatting tags</param>
@@ -159,7 +169,7 @@ public static class CliUtil
         }
 
         // Parse XML-like tags and apply colors
-        var regex = new Regex(@"<(?<tag>[iIwWeEsSdD])>(?<content>.*?)</\k<tag>>", RegexOptions.IgnoreCase);
+        var regex = new Regex(@"<(?<tag>[iIwWeEsSdDlLcC])>(?<content>.*?)</\k<tag>>", RegexOptions.IgnoreCase);
         var lastIndex = 0;
 
         foreach (Match match in regex.Matches(text))
@@ -183,6 +193,7 @@ public static class CliUtil
                 "s" => Color.Success,   // Success (DarkGreen)
                 "d" => Color.Dim,       // Dim (DarkGray)
                 "l" => Color.Lite,      // Lite (Gray)
+                "c" => Color.Code,      // Code (DarkGreen)
                 _ => mainColor,         // Default (White)
             };
 
@@ -407,8 +418,8 @@ public static class CliUtil
     public static bool PromptYesNo(string question, bool defaultYes = true, ConsoleColor? color = null, int indent = 0)
     {
         var defaultText = defaultYes ? "[Y/n]" : "[y/N]";
-        Write($"{question} {defaultText}: ", color, false, indent);
-
+        var promptText = $"{question} {defaultText}: ";
+        WriteFormat(promptText, false, indent, color ?? Color.Primary);
         while (true)
         {
             var response = ReadLn()?.Trim().ToLowerInvariant();
@@ -477,7 +488,7 @@ public static class CliUtil
             // Empty input means cancel
             if (string.IsNullOrWhiteSpace(choiceStr))
             {
-                return Result<string>.Failure("Selection canceled by user");
+                return Result<string>.FailWithMessage("Selection canceled by user");
             }
 
             // Validate and return selection
@@ -527,7 +538,7 @@ public static class CliUtil
 
         if (stringResult.IsFailure)
         {
-            return Result<T>.Failure(stringResult.Message!);
+            return Result<T>.FailWithMessage(stringResult.Message!);
         }
 
         var index = Array.IndexOf(displayStrings, stringResult.Data);

@@ -112,7 +112,9 @@ public class CommandController
             Cli.WriteLnError(unknownCommandMessage);
             Cli.WriteLn();
             Cli.WriteLn(_helpGenerator.Generate(_registry.Root));
-            return Result.Failure(unknownCommandMessage, FC.UNKNOWN_COMMAND);
+            return Result.Failure(                
+                failureCode: FC.UNKNOWN_COMMAND,
+                failureMessage: unknownCommandMessage);
         }
 
         // If it's a group (not a leaf), show group help
@@ -134,7 +136,9 @@ public class CommandController
         {
             var commandNotFoundMessage = $"{T.Command_type_not_found}: {node.FullPath}";
             Cli.WriteLnError(commandNotFoundMessage);
-            return Result.Failure(commandNotFoundMessage, FC.COMMAND_NOT_FOUND);
+            return Result.Failure(
+                failureCode: FC.COMMAND_NOT_FOUND,
+                failureMessage: commandNotFoundMessage);
         }
 
         // Create command instance with tiered DI approach
@@ -152,7 +156,7 @@ public class CommandController
                 Cli.WriteLnError(error);
             }
             // Don't include message since we already printed above - avoid duplication in centralized printing
-            return Result.Failure(null, FailureCodes.VALIDATION_ERROR);
+            return Result.FailWithCode(FailureCodes.VALIDATION_ERROR);
         }
 
         // Apply parsed arguments to command properties
@@ -189,7 +193,6 @@ public class CommandController
     {
         // Try convention-based namespace prefix (vertical slice)
         var namespacePrefix = GetCommandNamespacePrefix(commandType);
-        // Console.WriteLine($"[DEBUG CommandController] Command: {commandType.FullName}, Namespace prefix: {namespacePrefix ?? "NULL"}");
 
         // Service Groups: shared services explicitly opted in (always apply if present)
         var groupAttrs = commandType.GetCustomAttributes()
@@ -235,15 +238,6 @@ public class CommandController
 
         // Build the provider and create instance
         var commandProvider = services.BuildServiceProvider();
-
-        // DEBUG: Check if ServerSetupService is in command provider
-        var testType = Type.GetType("Vexit.VxServerCli.Commands.Server.Setup.Services.ServerSetupService, Vexit.VxServerCli");
-        // Console.WriteLine($"[DEBUG CommandController] Type resolved: {testType != null}");
-        if (testType != null)
-        {
-            var testResolve = commandProvider.GetService(testType);
-            // Console.WriteLine($"[DEBUG CommandController] ServerSetupService in command provider: {testResolve != null}");
-        }
 
         // Use the command-scoped provider for instantiation
         return (CmdBase)ActivatorUtilities.CreateInstance(commandProvider, commandType)!;
@@ -445,7 +439,9 @@ public class CommandController
             var message = string.Format(T.Hook_failed, $"{hookType}.{methodName}") + $": {ex.Message}";
             Cli.WriteLnWarning(message);
             var failureMessage = string.Format(T.Hook_failed, hookType) + $": {ex.Message}";
-            return Result.Failure(failureMessage, FC.HOOK_EXECUTION_FAILED);
+            return Result.Failure(
+                failureCode: FC.HOOK_EXECUTION_FAILED,
+                failureMessage: failureMessage);
         }
     }
 

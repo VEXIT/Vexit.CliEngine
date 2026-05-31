@@ -9,6 +9,8 @@
 
 ---
 
+> **Note (2026-04):** Examples use `EncryptCmd` and similar names as **generic placeholders** for complex commands. In **VX CLI**, settings encryption is **`vx settings encrypt`** (`Commands/Settings/EncryptCmd`); dependency-injection patterns (service groups, vertical slices) are the same.
+
 ## Overview
 This document explores the architectural challenge of implementing **selective dependency injection** in CLI tools, specifically for Vexit.CliEngine. The core problem is balancing the need for complex business logic (services) with CLI performance requirements.
 
@@ -969,7 +971,7 @@ public class EncryptCmd : CmdBase
 
 1. **Default to Ops** for simple commands (zero overhead)
 2. **Use Lazy Services** for occasional service needs (minimal overhead)
-3. **Use Command Groups** for complex service graphs (controlled overhead). Commands can now opt into `[AddServiceGroup<ServiceRegistryName>]` registries *and* still receive their `Commands/<Feature>/Services/*` helpers—ServiceGroups run first, slice services run second (TryAdd), and only a `<CommandName>Startup` can override them.
+3. **Use Command Groups** for complex service graphs (controlled overhead). Commands can now opt into `[AddServiceGroup<ServiceRegistryName>]` registries *and* still receive their `Commands/<Feature>/_Services/*` helpers—ServiceGroups run first, slice services run second (TryAdd), and only a `<CommandName>Startup` can override them.
 4. **Organize by module** for clarity, but load on-demand for speed
 
 This gives you modularity where you need it, with Vexit.CliEngine performance everywhere else.

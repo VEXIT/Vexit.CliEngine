@@ -10,6 +10,7 @@
 |              | 2025-12-31 - Vex - Added CmdBase and CliBase architecture section explaining inheritance hierarchy and SRP separation |
 |              | 2026-01-30 - Vex - Updated to CliService architecture, replaced CliBase inheritance with dependency injection |
 |              | 2026-02-17 - Fixed DI precedence order: Service Groups → Command Startup → Command Folder Services → Global Services |
+|              | 2026-04-21 - Replaced obsolete `Commands/Encrypt` examples with `Commands/Settings` and shared `ISettingsDiscoveryService` |
 
 ---
 
@@ -79,8 +80,8 @@ public class MyService
 
 ### 5) Vertical Slicing (Command Folders)
 - Vertical slicing is implemented using command folders: commands are organized in command-specific folders with all related layers vertically integrated
-- Structure: `Commands/<CommandName>/(Command + Services + Models + Ops + Constants + Validators + Clis)`
-- Convention-based DI automatically discovers and registers services in `Commands.<CommandName>.Services.*` (interfaces and concretes) using TryAdd semantics
+- Structure: `Commands/<CommandName>/(Command + _Services + _Models + _Ops + _Constants + _Validators + _Clis)`
+- Convention-based DI automatically discovers and registers services in `Commands.<CommandName>._Services.*` (interfaces and concretes) using TryAdd semantics
 - Enables true modularity: drop a command folder, get auto-wired services
 - Root-level commands (directly under `.Commands`) do not trigger command folder scanning
 
@@ -94,10 +95,10 @@ public class MyService
 ### 7) Services (side-effects and integrations)
 - External I/O, encryption, key vault, file system, HTTP, etc.
 - Can be registered in two ways:
-  - **Convention-based**: Place in `Commands/<CommandName>/Services/` for auto-registration
+  - **Convention-based**: Place in `Commands/<CommandName>/_Services/` for auto-registration
   - **Explicit**: Register in `IServiceRegistry` and use `[AddServiceGroup<ServiceRegistryName>]` attribute
 - Location (shared): `Vexit.VxCli/Services/<Domain>/...`
-- Location (command-local): `Vexit.VxCli/Commands/<CommandName>/Services/...`
+- Location (command-local): `Vexit.VxCli/Commands/<CommandName>/_Services/...`
 - Typical lifetimes: Transient (default). Use Scoped only if per-command state is needed
 
 ### Service Group Organization Convention
@@ -162,7 +163,7 @@ For each command execution, services are resolved in this order:
    Use runtime context (args, working dir) to explicitly wire concrete implementations (e.g., `DotNetInitService` vs `NextjsInitService`).
 
 3. **Command Folder Conventions (Safety net, TryAdd)**  
-   Convention-based registration for `Commands.<CommandName>.Services.*` using `TryAddTransient`. This always runs if the command has a slice namespace, regardless of ServiceGroup usage, so commands can consume both shared registries and slice-local helpers:
+   Convention-based registration for `Commands.<CommandName>._Services.*` using `TryAddTransient`. This always runs if the command has a slice namespace, regardless of ServiceGroup usage, so commands can consume both shared registries and slice-local helpers:
    - Register interfaces to concretes when found
    - Register concretes directly when no interface
    TryAdd ensures Startup overrides take precedence. Only a `<CommandName>Startup` can supersede the combination of ServiceGroups + convention services.
@@ -180,18 +181,18 @@ For each command execution, services are resolved in this order:
 
 **Namespace Pattern:**
 ```
-Commands.<CommandName>.Services.*
+Commands.<CommandName>._Services.*
 ```
 
 **Example:**
 ```
-Vexit.VxCli.Commands.Init.Services.DotNetInitService
+Vexit.VxCli.Commands.Init._Services.DotNetInitService
                       ^^^^          ^^^^^^^^^^^^^^^^^^
                       command folder auto-registered
 ```
 
 **Rules:**
-- Only types under `.Services.` subtree are registered
+- Only types under `._Services.` subtree are registered
 - Interfaces are registered with their implementations (e.g., `IInitService` → `DotNetInitService`)
 - Concrete types without interfaces are registered directly
 - Commands, attributes, and abstract types are excluded
@@ -259,9 +260,9 @@ Services are resolved in this order (higher numbers can't override lower ones):
      - In `RegisterServices(IServiceCollection services)` method, register external and/or local services. Place the registry in   `Services/` (external-only) or in a group folder (with local services).
     - In the command class, decorate class with one or more attributes: `[AddServiceGroup<ServiceRegistryName>]`. Multiple attributes are supported and applied in discovery order. Example: 
     ```csharp
-    [AddServiceGroup<EncryptionServiceGroup>]
+    [AddServiceGroup<ProjectsRegistryServices>]
     [AddServiceGroup<ProjectAnalyzerServiceGroup>]
-    public class EncryptCmd : CmdBase { ... }
+    public class ExampleCmd : CmdBase { ... }
     ```
    - Examples:
      ```csharp
@@ -325,16 +326,16 @@ Services are resolved in this order (higher numbers can't override lower ones):
 
    **Example A: Single Command Folder**
    - Command folder is named after the command (minus "Cmd" suffix), e.g., `Commands/CreateCliApp/` for `CreateCliAppCmd`.
-   - Drop your services (interfaces + implementations) in `Commands/CreateCliApp/Services/`.
+   - Drop your services (interfaces + implementations) in `Commands/CreateCliApp/_Services/`.
    - Example:
      ```csharp
-     // Commands/CreateCliApp/Services/ICreateCliAppService.cs
+     // Commands/CreateCliApp/_Services/ICreateCliAppService.cs
      public interface ICreateCliAppService
      {
          Result<string> CreateProject(string name, string template);
      }
 
-     // Commands/CreateCliApp/Services/CreateCliAppService.cs
+     // Commands/CreateCliApp/_Services/CreateCliAppService.cs
      public class CreateCliAppService : ICreateCliAppService
      {
          public Result<string> CreateProject(string name, string template) { ... }
@@ -350,11 +351,11 @@ Services are resolved in this order (higher numbers can't override lower ones):
 
    **Example B: Command Slice Folder**
    - For nested command structures, services are scanned from the command slice folder.
-   - Example: `Commands/New/ApiServer/Services/` for `ApiServerCmd`.
+   - Example: `Commands/New/ApiServer/_Services/` for `ApiServerCmd`.
    - Services in slice folders are specific to that command only.
    - Example:
      ```csharp
-     // Commands/New/ApiServer/Services/InitVModArchFlow.cs
+     // Commands/New/ApiServer/_Services/InitVModArchFlow.cs
      public class InitVModArchFlow : FlowBase<InitVModInput, InitVModOutput>
      {
          // Implementation for API server VMod architecture setup
@@ -369,33 +370,43 @@ Services are resolved in this order (higher numbers can't override lower ones):
      ```
 
    **Example C: Command Group Folder (Shared Services)**
-   - Command group folder contains multiple related commands, e.g., `Commands/Settings/` with `EncryptCmd`, `DecryptCmd`, `RestoreCmd`.
-   - Drop shared services in `Commands/Settings/Services/` - they will be auto-discovered for ALL commands in that group.
+   - Command group folder contains multiple related commands, e.g., `Commands/Settings/` with `EncryptCmd`, `DecryptCmd`, `RestoreCmd`, `SecretsCmd`.
+   - Drop shared services in `Commands/Settings/_Services/` - they will be auto-discovered for ALL commands in that group (e.g., `ISettingsSecurityService`, `ISettingsDiscoveryService`).
    - Example:
      ```csharp
-     // Commands/Settings/Services/ISettingsSecurityService.cs
+     // Commands/Settings/_Services/ISettingsSecurityService.cs
      public interface ISettingsSecurityService
      {
          Result<List<string>> EncryptSecrets(...);
          Result<DecryptResult> DecryptSecrets(...);
      }
 
-     // Commands/Settings/Services/SettingsSecurityService.cs
+     // Commands/Settings/_Services/ISettingsDiscoveryService.cs
+     public interface ISettingsDiscoveryService
+     {
+         IReadOnlyList<string> DiscoverSettingsFiles(string projectPath);
+     }
+
+     // Commands/Settings/_Services/SettingsSecurityService.cs
      public class SettingsSecurityService : ISettingsSecurityService { ... }
 
-     // Commands/Settings/EncryptCmd.cs (no attribute needed)
+     // Commands/Settings/_Services/SettingsDiscoveryService.cs
+     public class SettingsDiscoveryService : ISettingsDiscoveryService { ... }
+
+     // Commands/Settings/EncryptCmd.cs (no attribute needed for slice services)
      public class EncryptCmd : SettingsCmdGroup
      {
-         private readonly ISettingsSecurityService _service;  // Auto-injected
-         public EncryptCmd(ISettingsSecurityService service) { _service = service; }
+         private readonly ISettingsSecurityService _security;
+         private readonly ISettingsDiscoveryService _discovery;
+         public EncryptCmd(ISettingsSecurityService security, ISettingsDiscoveryService discovery)
+         {
+             _security = security;
+             _discovery = discovery;
+         }
      }
 
-     // Commands/Settings/DecryptCmd.cs (no attribute needed)
-     public class DecryptCmd : SettingsCmdGroup
-     {
-         private readonly ISettingsSecurityService _service;  // Auto-injected
-         public DecryptCmd(ISettingsSecurityService service) { _service = service; }
-     }
+     // Commands/Settings/DecryptCmd.cs — same shared Services/ folder
+     public class DecryptCmd : SettingsCmdGroup { ... }
      ```
 
 ### 4. **Global Services (fallback for simple commands)**
@@ -413,7 +424,10 @@ Services are resolved in this order (higher numbers can't override lower ones):
 Vexit.VxCli/
 ├── Commands/
 │   ├── InitCmd.cs
-│   └── EncryptCmd.cs
+│   └── Settings/
+│       ├── EncryptCmd.cs
+│       └── Services/
+│           └── ...
 ├── Services/
 │   ├── Encryption/
 │   │   ├── EncryptionServiceGroup.cs  ← IServiceRegistry implementation
@@ -429,7 +443,7 @@ Vexit.VxCli/
     └── ProjectContextModel.cs
 ```
 
-**Use with:** `[AddServiceGroup<EncryptionServiceGroup>]`
+**Use with:** `[AddServiceGroup<ProjectsRegistryServices>]` (or another `IServiceRegistry` under `Services/`)
 
 ### Pattern 2: Vertical Slicing (Command Folders)
 
@@ -445,13 +459,17 @@ Vexit.VxCli/
 │   │   │   └── InitResultModel.cs
 │   │   └── Constants/
 │   │       └── Text.cs (partial)
-│   └── Encrypt/
+│   └── Settings/
 │       ├── EncryptCmd.cs
-│       ├── Services/
-│       │   ├── IEncryptService.cs
-│       │   └── DotNetEncryptService.cs
-│       └── Models/
-│           └── EncryptionContextModel.cs
+│       ├── DecryptCmd.cs
+│       ├── RestoreCmd.cs
+│       ├── SecretsCmd.cs
+│       ├── SettingsCmdGroup.cs
+│       └── Services/
+│           ├── ISettingsDiscoveryService.cs
+│           ├── SettingsDiscoveryService.cs
+│           ├── ISettingsSecurityService.cs
+│           └── SettingsSecurityService.cs
 ├── Services/                          ← Shared services (opt-in)
 │   └── Common/
 │       ├── CommonServiceGroup.cs      ← IServiceRegistry
@@ -468,7 +486,7 @@ Vexit.VxCli/
 
 ### Pattern 3: Hybrid (Recommended)
 
-- Use vertical slicing for complex, self-contained commands (implemented as command folders, e.g., `Init`, `Encrypt`)
+- Use vertical slicing for complex, self-contained commands (implemented as command folders, e.g., `Init`, `Settings`)
 - Use horizontal layering for truly shared infrastructure (e.g., file system, logging)
 - Combine both via `[AddServiceGroup<ServiceRegistryName>]` when a command folder needs shared services
 
@@ -495,13 +513,13 @@ public sealed class EncryptionServiceGroup : IServiceRegistry
 No registry needed—just place services in the command folder:
 
 ```csharp
-// In Vexit.VxCli/Commands/Init/Services/IInitService.cs
+// In Vexit.VxCli/Commands/Init/_Services/IInitService.cs
 public interface IInitService
 {
     Task<Result<InitResult>> ExecuteAsync(string projectPath);
 }
 
-// In Vexit.VxCli/Commands/Init/Services/DotNetInitService.cs
+// In Vexit.VxCli/Commands/Init/_Services/DotNetInitService.cs
 public class DotNetInitService : IInitService
 {
     // Auto-registered as IInitService → DotNetInitService
@@ -522,7 +540,7 @@ public class InitCmd : CmdBase
     private readonly IInitService _initService;
     private readonly IProjectAnalyzerService _projectAnalyzer;
 
-    // Services auto-injected from Commands.Init.Services.*
+    // Services auto-injected from Commands.Init._Services.*
     public InitCmd(IInitService initService, IProjectAnalyzerService projectAnalyzer)
     {
         _initService = initService;
@@ -540,24 +558,23 @@ public class InitCmd : CmdBase
 ### Example 2: Combined (Shared + Command Folder)
 
 ```csharp
-// In Vexit.VxCli/Commands/Encrypt/EncryptCmd.cs
-[AddServiceGroup<EncryptionServiceGroup>]  // Opt-in to shared encryption services
-[Command("encrypt", T.EncryptCmd_description)]
-public class EncryptCmd : CmdBase
+// In Vexit.VxCli/Commands/Settings/EncryptCmd.cs
+[AddServiceGroup<ProjectsRegistryServices>]   // Shared registry (opt-in)
+[Command(Cmd.Settings.Encrypt.Name, "...")]
+public class EncryptCmd : SettingsCmdGroup
 {
-    private readonly IEncryptService _encryptService;        // From slice
-    private readonly IKeyVaultService _keyVault;            // From shared registry
-    private readonly IEnvironmentKeyService _envKeyService; // From shared registry
+    private readonly IProjectsRegistryService _registry;       // From service group
+    private readonly ISettingsSecurityService _security;    // From Commands/Settings/_Services (convention)
+    private readonly ISettingsDiscoveryService _discovery;   // From Commands/Settings/_Services (convention)
 
-    // Gets services from BOTH EncryptionServiceGroup AND Commands.Encrypt.Services.*
     public EncryptCmd(
-        IEncryptService encryptService,
-        IKeyVaultService keyVault,
-        IEnvironmentKeyService envKeyService)
+        IProjectsRegistryService registry,
+        ISettingsSecurityService security,
+        ISettingsDiscoveryService discovery)
     {
-        _encryptService = encryptService;
-        _keyVault = keyVault;
-        _envKeyService = envKeyService;
+        _registry = registry;
+        _security = security;
+        _discovery = discovery;
     }
 }
 ```
@@ -626,15 +643,15 @@ public class VersionCmd : CmdBase
 
 - **Commands (flat):** `Commands/<CommandName>Cmd.cs`
 - **Commands (vertical slice):** `Commands/<CommandGroupName>/<CommandName>Cmd.cs`
-- **Command slice services:** `Commands/<CommandName>/Services/...`
+- **Command slice services:** `Commands/<CommandName>/_Services/...`
 - **Service groups:** `Services/<ServiceGroupName>ServiceGroup.cs` (external-only) or `Services/<ServiceGroupName>/...` (with local services)
 - **Ops:** `Ops/` (no DI, stateless) and `Commands/<CommandName>/Ops/` for slice-local
 - **Clis:** `Clis/` (static user interaction utilities)
 - **Validators:** `Validators/` (static validation logic)
 - **Models (shared):** `Models/`
-- **Models (feature-local):** `Commands/<CommandName>/Models/`
+- **Models (feature-local):** `Commands/<CommandName>/_Models/`
 - **Constants (shared):** `Constants/Text.cs`
-- **Constants (feature-local):** `Commands/<CommandName>/Constants/Text.cs` (partial class)
+- **Constants (feature-local):** `Commands/<CommandName>/_Constants/Text.cs` (partial class)
 
 ---
 

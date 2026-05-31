@@ -4,6 +4,7 @@
  * Author:      	Vex Tatarevic
  * Date Created:    2025-09-15 - Initial creation for Cli Parser
  * DateUpdated:		2025-10-27	| Vex | Redesign parser to handle positional Argument vs named Option, MultiValue (incl. variadic), key=value, and strong typing
+ *                  2026-04-27 | Vex | Parse inline boolean option tri-state (e.g. --opt-in=true, --opt-in=false, --opt-in) and treat supplied bare nullable-boolean flags (e.g. --opt-in) as true.
  *
  ************************************************/
 
@@ -187,8 +188,18 @@ public class CliParser
                 var arg = args[i];
                 if (arg.StartsWith("--"))
                 {
-                    var argName = arg.Substring(2);
-                    ParseOption(argName, defs.Options, defs.ShortOptions, parsedArgs, args, ref i);
+                    var rest = arg[2..];
+                    var eq = rest.IndexOf('=');
+                    if (eq >= 0)
+                    {
+                        var optName = rest[..eq];
+                        var optVal = rest[(eq + 1)..];
+                        ParseOption(optName, defs.Options, defs.ShortOptions, parsedArgs, new[] { optVal }, ref i, isKeyValue: true);
+                    }
+                    else
+                    {
+                        ParseOption(rest, defs.Options, defs.ShortOptions, parsedArgs, args, ref i);
+                    }
                 }
                 else if (arg.StartsWith("-") && arg.Length == 2)
                 {
@@ -256,7 +267,8 @@ public class CliParser
         var optType = def.ValueType;
         var fullName = def.LongName;
 
-        if (optType == typeof(bool) && !isKeyValue)
+        // Treat supplied bare nullable-boolean flags (e.g. --opt-in) as true.
+        if (!isKeyValue && (optType == typeof(bool) || Nullable.GetUnderlyingType(optType) == typeof(bool)))
         {
             parsedArgs.SetValue(fullName, true);
             return;

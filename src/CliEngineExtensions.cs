@@ -69,12 +69,13 @@ public static class CliEngineExtensions
     {
         // Register options for later initialization at runtime (when IServiceProvider is available)
         services.AddSingleton(options);
+        services.AddSingleton(options.CliConfig);
 
         // Register the command executor for interactive command scenarios
         services.AddSingleton<ICommandExecutor, CommandExecutor>();
 
         // Register CLI service for consistent output across all components
-        services.AddScoped<CliService>(sp => new CliService(options.CliConfig));
+        services.AddScoped<ICliService, CliService>();
     }
 
     /// <summary>
@@ -135,8 +136,8 @@ public static class CliEngineExtensions
             // Register the command executor for interactive command scenarios
             services.AddSingleton<ICommandExecutor, CommandExecutor>();
 
-            // Register CLI service for consistent output across all components
-            services.AddScoped<CliService>(sp => new CliService(_options.CliConfig));
+            services.AddSingleton(_options.CliConfig);
+            services.AddScoped<ICliService, CliService>();
         }
     }
 }

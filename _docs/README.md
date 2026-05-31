@@ -353,7 +353,7 @@ NOTE: the `Init` folder is a slice container, not a group, so there is no `InitC
 ## Vertical Slicing & Convention-Based DI
 Organize your commands into self-contained feature folders. The engine automatically discovers and wires up dependencies based on namespace conventions, making features truly modular.
 - **Structure:** `Commands/<FeatureName>/`
-- **Convention:** Services placed in `Commands/<FeatureName>/Services/` are automatically registered for injection into the command in that folder.
+- **Convention:** Services placed in `Commands/<FeatureName>/_Services/` are automatically registered for injection into the command in that folder.
 - **Benefit:** Drop a new command folder into your project, and its local dependencies are instantly available with zero manual registration.
 
 ## Service Groups
@@ -363,7 +363,7 @@ For shared, cross-cutting concerns (e.g., encryption, file system access), you c
 - **How:** Define an `IServiceRegistry`, then decorate a command with `[AddServiceGroup(YourRegistryName)]`, for example: `[AddServiceGroup<SecurityServiceGroup>]`. Optional `Order` property available for fine control of registration sequence.
 - **Modular Organization:** Service registries and their related service implementations are co-located in the same folder for portability. The `IServiceRegistry` class serves as the bundle manifest for a cohesive set of services.
 - **Benefit:** Keeps commands decoupled from global service locators and ensures they only load the shared dependencies they actually need.
-- **Composable:** ServiceGroups now *layer* on top of slice services. The engine applies ServiceGroup registries first and then registers `Commands/<Slice>/Services/*` by convention. This means a complex command can consume both shared infrastructure and slice-local helpers without extra wiring. Only a `<CommandName>Startup` class can override these registrations.
+- **Composable:** ServiceGroups now *layer* on top of slice services. The engine applies ServiceGroup registries first and then registers `Commands/<Slice>/_Services/*` by convention. This means a complex command can consume both shared infrastructure and slice-local helpers without extra wiring. Only a `<CommandName>Startup` class can override these registrations.
 
 ### Service Group Organization Convention
 

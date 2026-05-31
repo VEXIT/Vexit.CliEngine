@@ -44,50 +44,52 @@ public abstract class CmdBase
     /// Returns a successful Result with no data.
     /// </summary>
     protected Result Ok(string? message = null)
-    {
-        return Result.Ok(message);
-    }
+        => Result.Ok(message);
 
     /// <summary>
     /// Returns a failure Result with no data.
     /// </summary>
-    protected Result Failure(string errorMessage, string? errorCode = null)
-    {
-        return Result.Failure(errorMessage, errorCode);
-    }
-    
-    /// <summary>
-    /// Converts a failed generic Result into a failed non-generic Result.
-    /// </summary>
-    protected Result Failure<T>(Result<T> failedResult)
-    {
-        return Result.Failure(failedResult.Message, failedResult.ErrorCode);
-    }
+    protected Result Failure(string failureCode, string? failureMessage = null)
+        => Result.Failure(failureCode: failureCode, failureMessage: failureMessage);
+
 
     /// <summary>
     /// Converts a failed non-generic Result into a failed non-generic Result.
     /// </summary>
-    protected Result Failure(Result failedResult)
-    {
-        return failedResult.IsFailure ? Result.Failure(failedResult.Message, failedResult.ErrorCode) : Result.Ok();
-    }
+    protected Result Failure(Result failedResult) =>
+        Result.Failure(failureCode: failedResult.FailureCode ?? string.Empty, failureMessage: failedResult.Message);
 
+    protected Result FailWithCode(string code)
+   => Result.FailWithCode(code);
+
+    protected Result FailWithMessage(string message)
+        => Result.FailWithMessage(message);
+
+        
 
     // --- GENERIC HELPERS (for operations/commands returning data) ---
 
     /// <summary>
     /// Returns a successful Result<T> with data.
     /// </summary>
-    protected Result<T> Ok<T>(T data, string? message = null)
-    {
-        return Result<T>.Success(data, message);
-    }
+    protected Result<T> Ok<T>(T data, string? message = null) => Result<T>.Success(data, message);
 
     /// <summary>
     /// Returns a failure Result<T> with an error message.
+    /// </summary>    
+    protected Result<T> Failure<T>(string failureCode, string? failureMessage = null)
+        => Result<T>.Failure(failureMessage: failureMessage, failureCode: failureCode);
+
+    protected Result<T> FailWithCode<T>(string code)
+        => Result<T>.FailWithCode(code);
+
+    protected Result<T> FailWithMessage<T>(string message)
+        => Result<T>.FailWithMessage(message);
+
+    /// <summary>
+    /// Converts a failed generic Result into a failed non-generic Result.
     /// </summary>
-    protected Result<T> Failure<T>(string errorMessage, string? errorCode = null)
-    {
-        return Result<T>.Failure(errorMessage, errorCode);
-    }
+    protected Result Failure<T>(Result<T> failedResult) =>
+        Result.Failure(failureCode: failedResult.FailureCode ?? string.Empty, failureMessage: failedResult.Message);
+
 }

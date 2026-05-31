@@ -14,10 +14,10 @@ using Vexit.Common.Models;
 namespace Vexit.CliEngine;
 
 /// <summary>
-/// Injectable CLI service for consistent output formatting and user interaction.
+/// Injectable CLI service for consistent output formatting and user interaction. <br />
 /// Provides the same functionality as CliBase but can be injected anywhere.
 /// </summary>
-public class CliService
+public class CliService : ICliService
 {
     private readonly CliConfig _config;
 
@@ -66,12 +66,12 @@ public class CliService
     }
 
     /// <summary>
-    /// Writes formatted text with automatic top/left margin handling
+    /// <inheritdoc cref="Cli.WriteLnFormat"/>
     /// </summary>
-    public void WriteLnFormat(string text, int indent = 0)
+    public void WriteLnFormat(string text, int indent = 0, ConsoleColor? mainColor = null)
     {
         ApplyTopMarginIfNeeded();
-        Cli.WriteLnFormat(text, indent + _globalLeftMargin);
+        Cli.WriteLnFormat(text, indent + _globalLeftMargin, mainColor);
     }
 
     /// <summary>
@@ -137,34 +137,29 @@ public class CliService
         Cli.WriteLnLite(message, indent + _globalLeftMargin);
     }
 
-    /// <summary>
-    /// Writes formatted text without newline with automatic top/left margin handling
-    /// </summary>
-    public void WriteFormat(string text, int indent = 0)
+    
+    public void WriteLnCode(string message, int indent = 0)
     {
         ApplyTopMarginIfNeeded();
-        Cli.WriteFormat(text, indent + _globalLeftMargin);
+        Cli.WriteLnCode(message, indent + _globalLeftMargin);
     }
 
-    /// <summary>
-    /// Writes text without newline with automatic left margin handling
-    /// </summary>
+    public void WriteFormat(string text, int indent = 0, ConsoleColor? mainColor = null)
+    {
+        ApplyTopMarginIfNeeded();
+        Cli.WriteFormat(text, indent + _globalLeftMargin, mainColor);
+    }
+
     public void Write(string text, int indent = 0)
     {
         Cli.Write(text, null, false, indent + _globalLeftMargin);
     }
 
-    /// <summary>
-    /// Writes dimmed text without newline with automatic left margin handling
-    /// </summary>
     public void WriteDim(string text, int indent = 0)
     {
         Cli.WriteDim(text, indent + _globalLeftMargin);
     }
 
-    /// <summary>
-    /// Writes a styled label/prompt
-    /// </summary>
     public void WriteLabel(string text, int indent = 0)
     {
         ApplyTopMarginIfNeeded();
@@ -196,10 +191,10 @@ public class CliService
     /// <summary>
     /// Prompts user with yes/no question
     /// </summary>
-    public bool PromptYesNo(string message, bool defaultValue = false)
+    public bool PromptYesNo(string message, bool defaultValue = false, ConsoleColor? promptColor = null)
     {
         ApplyTopMarginIfNeeded();
-        return Cli.PromptYesNo(message, defaultValue, _config.LabelColor, _globalLeftMargin);
+        return Cli.PromptYesNo(message, defaultValue, promptColor ?? _config.LabelColor, _globalLeftMargin);
     }
 
     /// <summary>

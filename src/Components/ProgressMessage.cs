@@ -95,7 +95,7 @@ public static class ProgressMessage
                 displayText = $"{progressMessage}{progressBar} {spinner} {timer}";
 
 
-                // Use \r to overwrite the line
+                // Use \r on stderr (Cli.Write → Console.Error) to overwrite the current line in place
                 Cli.Write($"\r{displayText}", color, false, indent);
 
                 try
@@ -117,9 +117,11 @@ public static class ProgressMessage
 
             // Stop display
             spinnerCts.Cancel();
-            await displayTask;
+            // Guard: if the spinner task itself faulted or was cancelled, swallow that —
+            // it must not replace the real work result with an unrelated exception.
+            try { await displayTask; } catch { /* spinner errors must not propagate */ }
 
-            // Clear the entire progress line completely
+            // Clear the spinner line on stderr before printing the completion message
             ClearLine();
 
             if (result.IsSuccess)
@@ -137,9 +139,11 @@ public static class ProgressMessage
         {
             // Stop display on exception
             spinnerCts.Cancel();
-            await displayTask;
+            // Guard: awaiting a faulted displayTask here would re-throw and swallow the
+            // original exception, so we safely discard any spinner-task error.
+            try { await displayTask; } catch { /* spinner errors must not propagate */ }
 
-            // Clear the entire progress line completely
+            // Clear the spinner line on stderr before printing the error message
             ClearLine();
             Cli.WriteLnError(errorMessage);
 
@@ -182,22 +186,22 @@ public static class ProgressMessage
     }
 
     /// <summary>
-    /// Clears the entire current line by overwriting it with spaces
+    /// Clears the spinner line on stderr by overwriting it with spaces (must match <see cref="Cli.Write"/> / Console.Error).
     /// </summary>
     private static void ClearLine()
     {
         try
         {
-            // Get terminal width, fallback to reasonable default if not available
+            // Terminal width for the clear width; 120 when WindowWidth is unavailable
             var width = Console.WindowWidth > 0 ? Console.WindowWidth : 120;
 
-            // Clear the line by overwriting with spaces, then return to start
-            Console.Write("\r" + new string(' ', width) + "\r");
+            // \r + spaces + \r on stderr — same stream as the in-place spinner updates
+            Console.Error.Write("\r" + new string(' ', width) + "\r");
         }
         catch
         {
-            // Fallback if we can't get terminal width
-            Console.Write("\r" + new string(' ', 120) + "\r");
+            // Fixed width on stderr when WindowWidth or the clear write fails
+            Console.Error.Write("\r" + new string(' ', 120) + "\r");
         }
     }
 
