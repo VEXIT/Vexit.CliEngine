@@ -4,10 +4,15 @@
  * Author:      	Vex Tatarevic
  * Date Created:    2026-01-30 - Injectable CLI service for consistent output
  * Date Updated:    2026-02-26 | Vex | Added PromptOptions and PromptOptions<T> methods for prompting the user to select one option from a list of string or object options.
-
+ *                  2026-07-20 | Vex | Added PromptOptionsMulti and PromptOptionsMulti<T> wrapper methods.
+ *                  2026-07-29 | Vex | Prompt defaultValue for editable input prefill.
+ *                  2026-08-01 | Vex | Added PromptLabel wrapper - appends the ": " so callers and text constants don't have to.
+ *                  2026-08-23 | Vex | Added WriteData wrapper for machine stdout
+ *
  ************************************************/
 
 using Vexit.CliEngine.Components;
+using Vexit.CliEngine.Enums;
 using Vexit.CliEngine.Utils;
 using Vexit.Common.Models;
 
@@ -45,7 +50,8 @@ public class CliService : ICliService
         {
             for (int i = 0; i < _globalTopMargin; i++)
             {
-                Console.WriteLine();
+                // STDERR: human-facing margin, keep STDOUT clean for machine data
+                Console.Error.WriteLine();
             }
             _hasOutputStarted = true;
         }
@@ -150,6 +156,20 @@ public class CliService : ICliService
         Cli.WriteFormat(text, indent + _globalLeftMargin, mainColor);
     }
 
+    /// <summary>
+    /// Used for writing to stdout stream read by machine processes like AI agents or automation scripts. <br />
+    /// It can write structured data objects as json (useful for returning success payloads) or plain text (useful for returning error codes). <br />
+    /// No left margin — payload must stay clean for piping and agents.
+    /// </summary>
+    public void WriteData<T>(T data, DataFormatEnum format = DataFormatEnum.Json)
+    {
+        Cli.WriteData(data, format);
+    }
+
+    public void WriteJsonData<T>(T data) => Cli.WriteJsonData(data);
+
+    public void WriteTextData<T>(T data) => Cli.WriteTextData(data);
+
     public void Write(string text, int indent = 0)
     {
         Cli.Write(text, null, false, indent + _globalLeftMargin);
@@ -177,24 +197,50 @@ public class CliService : ICliService
     /// <summary>
     /// Writes the prompt text and reads a line of input from the user.
     /// </summary>
-    /// <param name="message">The prompt to display (e.g. "Enter domain name (e.g. vexit.dev): ").</param>
+    /// <param name="message">The prompt to display (e.g. "Enter domain name (e.g. mysite.com): ").</param>
     /// <param name="masked">If true, masks input (e.g. for passwords).</param>
     /// <param name="promptColor">Color for the prompt text; defaults to LabelColor when null.</param>
     /// <param name="inputColor">Color for the user's input as they type; defaults to InputColor when null.</param>
+    /// <param name="defaultValue">Optional editable prefill in the input buffer (ignored when masked).</param>
     /// <returns>The trimmed user input.</returns>
-    public string Prompt(string message, bool masked = false, ConsoleColor? promptColor = null, ConsoleColor? inputColor = null)
+    public string Prompt(
+        string message,
+        bool masked = false,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? inputColor = null,
+        string? defaultValue = null)
     {
         ApplyTopMarginIfNeeded();
-        return Cli.Prompt(message, promptColor ?? _config.LabelColor, inputColor ?? _config.InputColor, masked, _globalLeftMargin);
+        return Cli.Prompt(message, promptColor ?? _config.LabelColor, inputColor ?? _config.InputColor, masked, _globalLeftMargin, defaultValue);
+    }
+
+    /// <summary>
+    /// Writes a bare label with the label separator appended and reads a line of input from the user.
+    /// </summary>
+    /// <param name="label">Label without trailing separator (e.g. "Domain name").</param>
+    /// <param name="masked">If true, masks input (e.g. for passwords).</param>
+    /// <param name="promptColor">Color for the prompt text; defaults to LabelColor when null.</param>
+    /// <param name="inputColor">Color for the user's input as they type; defaults to InputColor when null.</param>
+    /// <param name="defaultValue">Optional editable prefill in the input buffer (ignored when masked).</param>
+    /// <returns>The trimmed user input.</returns>
+    public string PromptLabel(
+        string label,
+        bool masked = false,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? inputColor = null,
+        string? defaultValue = null)
+    {
+        ApplyTopMarginIfNeeded();
+        return Cli.PromptLabel(label, promptColor ?? _config.LabelColor, inputColor ?? _config.InputColor, masked, _globalLeftMargin, defaultValue);
     }
 
     /// <summary>
     /// Prompts user with yes/no question
     /// </summary>
-    public bool PromptYesNo(string message, bool defaultValue = false, ConsoleColor? promptColor = null)
+    public bool PromptYesNo(string message, bool defaultValue = false, ConsoleColor? promptColor = null, int indent = 0)
     {
         ApplyTopMarginIfNeeded();
-        return Cli.PromptYesNo(message, defaultValue, promptColor ?? _config.LabelColor, _globalLeftMargin);
+        return Cli.PromptYesNo(message, defaultValue, promptColor ?? _config.LabelColor, indent + _globalLeftMargin);
     }
 
     /// <summary>
@@ -227,6 +273,62 @@ public class CliService : ICliService
     {
         ApplyTopMarginIfNeeded();
         return Cli.PromptOptions(prompt, options, promptColor ?? _config.LabelColor, optionsColor ?? _config.OptionsColor, inputColor ?? _config.InputColor, _globalLeftMargin);
+    }
+
+    /// <summary>
+    /// Prompts user to select one or more options from a numbered list.
+    /// </summary>
+    /// <param name="prompt">The prompt text to display.</param>
+    /// <param name="options">The list of string options to choose from.</param>
+    /// <param name="promptColor">Color for the prompt text; defaults to LabelColor when null.</param>
+    /// <param name="optionsColor">Color for the numbered options list.</param>
+    /// <param name="inputColor">Color for the user's input when typing their choice.</param>
+    /// <returns>Result with selected option strings (possibly empty).</returns>
+    public Result<IReadOnlyList<string>> PromptOptionsMulti(
+        string prompt,
+        IReadOnlyList<string> options,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? optionsColor = null,
+        ConsoleColor? inputColor = null)
+    {
+        ApplyTopMarginIfNeeded();
+        return Cli.PromptOptionsMulti(
+            prompt,
+            options,
+            promptColor ?? _config.LabelColor,
+            optionsColor ?? _config.OptionsColor,
+            inputColor ?? _config.InputColor,
+            _globalLeftMargin);
+    }
+
+    /// <summary>
+    /// Prompts user to select one or more objects from a numbered list.
+    /// </summary>
+    /// <typeparam name="T">The type of objects in the list.</typeparam>
+    /// <param name="prompt">The prompt text to display.</param>
+    /// <param name="options">The list of objects to choose from.</param>
+    /// <param name="displaySelector">Function to get the display string for each object.</param>
+    /// <param name="promptColor">Color for the prompt text; defaults to LabelColor when null.</param>
+    /// <param name="optionsColor">Color for the numbered options list.</param>
+    /// <param name="inputColor">Color for the user's input when typing their choice.</param>
+    /// <returns>Result with selected objects (possibly empty).</returns>
+    public Result<IReadOnlyList<T>> PromptOptionsMulti<T>(
+        string prompt,
+        IReadOnlyList<T> options,
+        Func<T, string> displaySelector,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? optionsColor = null,
+        ConsoleColor? inputColor = null)
+    {
+        ApplyTopMarginIfNeeded();
+        return Cli.PromptOptionsMulti(
+            prompt,
+            options,
+            displaySelector,
+            promptColor ?? _config.LabelColor,
+            optionsColor ?? _config.OptionsColor,
+            inputColor ?? _config.InputColor,
+            _globalLeftMargin);
     }
 
     /// <summary>

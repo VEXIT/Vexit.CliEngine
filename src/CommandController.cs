@@ -14,6 +14,7 @@
  *                  2025-11-30	| Vex | Edited to allow combining DI via attributes (ServiceRegistry pattern) with DI via convention based (inside vertical slice Services folder)
  *                  2026-02-02	| Vex | Added built-in CliEngineServices registry for automatic core service inclusion in all command DI containers
  *                  2026-02-05	| Vex | Reordered command instantiation flow: build command-scoped provider with ordered service groups BEFORE command instantiation for proper constructor injection
+ *                  2026-08-17	| Vex | Added built-in -v / --version handling (entry assembly version)
  *
  ************************************************/
 
@@ -24,6 +25,7 @@ using Vexit.CliEngine.Constants;
 using Vexit.CliEngine.BaseClasses;
 using Vexit.CliEngine.Attributes;
 using Vexit.CliEngine.DependencyInjection;
+using Vexit.CliEngine.Utils;
 using System.Reflection;
 using System.IO;
 using static Vexit.CliEngine.CliEngineExtensions;
@@ -84,11 +86,18 @@ public class CommandController
             }
         }
 
+        // Check for root version flag (-v / --version only, no command name)
+        if (CmdUtil.IsRootVersionRequest(args))
+        {
+            Cli.WriteLn(VersionUtil.GetVersion());
+            return Result.Ok();
+        }
+
         // Check for help flag
-        if (args.Any(a => a == "--help" || a == "-h"))
+        if (args.Any(CmdUtil.IsHelpFlag))
         {
             // Resolve command path without the help flag
-            var argsWithoutHelp = args.Where(a => a != "--help" && a != "-h").ToArray();
+            var argsWithoutHelp = args.Where(a => !CmdUtil.IsHelpFlag(a)).ToArray();
             var (node, _, _) = _registry.Resolve(argsWithoutHelp);
 
             if (node == null)

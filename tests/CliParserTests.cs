@@ -111,6 +111,64 @@ public class CliParserTests
         cmd.OptIn.Should().BeNull();
     }
 
+    [Fact]
+    public void Parse_Binds_MachineMode_From_CmdBase()
+    {
+        var parser = new CliParser();
+        var cmd = new NameOnlyCommand();
+
+        var parsed = parser.Parse(cmd, ["value", "-m"]);
+        parsed.ApplyToCommand(cmd);
+
+        parsed.HasValidationErrors.Should().BeFalse();
+        cmd.Name.Should().Be("value");
+        cmd.MachineMode.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Parse_Binds_MachineMode_LongFlag_From_CmdBase()
+    {
+        var parser = new CliParser();
+        var cmd = new NameOnlyCommand();
+
+        var parsed = parser.Parse(cmd, ["--machine"]);
+        parsed.ApplyToCommand(cmd);
+
+        parsed.HasValidationErrors.Should().BeFalse();
+        cmd.MachineMode.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Parse_Binds_AcceptDefaults_From_CmdBase()
+    {
+        var parser = new CliParser();
+        var cmd = new NameOnlyCommand();
+
+        var parsed = parser.Parse(cmd, ["-y"]);
+        parsed.ApplyToCommand(cmd);
+
+        parsed.HasValidationErrors.Should().BeFalse();
+        cmd.AcceptDefaults.Should().BeTrue();
+    }
+
+    [Fact]
+    public void NonInteractive_Is_True_When_MachineMode_Or_AcceptDefaults()
+    {
+        var cmd = new NonInteractiveProbeCommand { MachineMode = true };
+        cmd.NonInteractive.Should().BeTrue();
+
+        cmd = new NonInteractiveProbeCommand { AcceptDefaults = true };
+        cmd.NonInteractive.Should().BeTrue();
+
+        cmd = new NonInteractiveProbeCommand();
+        cmd.NonInteractive.Should().BeFalse();
+    }
+
+    private sealed class NonInteractiveProbeCommand : CmdBase
+    {
+        public new bool NonInteractive => base.NonInteractive;
+    }
+
     private sealed class DeployCommand : CmdBase
     {
         [Argument("name", isRequired: true)]

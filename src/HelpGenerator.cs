@@ -3,13 +3,14 @@
  * Copyright:		© 2025 VEXIT ®, www.vexit.com, Tomorrow is today...
  * Author:      	Vex Tatarevic
  * Date Created:    2025-10-28 - Initial creation for hierarchical help system
- * DateUpdated:		
+ * DateUpdated:		2026-08-24 - Updated to filter argument help by HideFromHelp, if true dont show in help
  *
  ************************************************/
 
 using System.Reflection;
 using System.Text;
 using Vexit.CliEngine.Attributes;
+using Vexit.CliEngine.Constants;
 
 
 
@@ -109,11 +110,15 @@ public class HelpGenerator
         sb.AppendLine("For more information on a specific command, use:");
         if (string.IsNullOrEmpty(node.FullPath))
         {
-            sb.AppendLine("  <command> --help");
+            sb.AppendLine($"  <command> --{RootCliFlags.Help}");
+            sb.AppendLine();
+            sb.AppendLine("For version information, use:");
+            sb.AppendLine($"  -{RootCliFlags.VersionShort}");
+            sb.AppendLine($"  --{RootCliFlags.Version}");
         }
         else
         {
-            sb.AppendLine($"  {node.FullPath} <subcommand> --help");
+            sb.AppendLine($"  {node.FullPath} <subcommand> --{RootCliFlags.Help}");
         }
 
         return sb.ToString();
@@ -142,7 +147,7 @@ public class HelpGenerator
 
         var options = properties
             .Select(p => new { Prop = p, Attr = p.GetCustomAttribute<OptionAttribute>() })
-            .Where(x => x.Attr != null)
+            .Where(x => x.Attr != null && !x.Attr.HideFromHelp)
             .ToList();
 
         // Show arguments

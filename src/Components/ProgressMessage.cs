@@ -145,9 +145,9 @@ public static class ProgressMessage
 
             // Clear the spinner line on stderr before printing the error message
             ClearLine();
-            Cli.WriteLnError(errorMessage);
+            Cli.WriteLnError(string.IsNullOrWhiteSpace(ex.Message) ? errorMessage : ex.Message);
 
-            return Result.Failure(ex.Message);
+            return Result.FailWithMessage(ex.Message);
         }
     }
 

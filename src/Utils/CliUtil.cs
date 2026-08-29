@@ -7,6 +7,13 @@
  *                 2025-12-22 | Vex | Added WriteFormat and WriteLnFormat methods for XML-like formatting, e.g. <i>text</i> for info, <w>text</w> for warning, <e>text</e> for error, <s>text</s> for success, <d>text</d> for dim, <l>text</l> for lite.
  *                 2026-01-13 | Vex | Added GlobalTopMargin and GlobalLeftMargin properties for global CLI margin settings, read from environment variables.
  *                 2026-02-26 | Vex | Added PromptOptions and PromptOptions<T> methods for prompting the user to select one option from a list of string or object options.
+ *                 2026-06-17 | Vex | Updated WriteLn and WriteFormat - now writing to STDERR, keeping STDOUT clean for machine data.
+ *                 2026-07-20 | Vex | Added PromptOptionsMulti and PromptOptionsMulti<T> for multi-select numbered options (e.g. 1,2 or 1-3).
+ *                 2026-07-29 | Vex | ReadLn caret navigation (arrows/Home/End/Delete) and optional initialValue; Prompt defaultValue prefill.
+ *                 2026-07-29 | Vex | ReadLn single-line only: discard pending console keys after Enter (blocks multi-line paste flood).
+ *                 2026-08-01 | Vex | Added PromptLabel wrapper - appends the ": " so callers and text constants don't have to.
+ *                 2026-08-24 | Vex | Added WriteJsonData / WriteTextData overloads for machine stdout.
+ *
  ************************************************************/
 
 
@@ -162,10 +169,10 @@ public static class CliUtil
 
     private static void WriteFormat(string text, bool newLine, int indent = 0, ConsoleColor? mainColor = ConsoleColor.White)
     {
-        // Add indent spaces first
+        // Add indent spaces first (STDERR: human-facing, keep STDOUT clean for machine data)
         for (int i = indent; i-- > 0;)
         {
-            Console.Write(" ");
+            Console.Error.Write(" ");
         }
 
         // Parse XML-like tags and apply colors
@@ -211,7 +218,8 @@ public static class CliUtil
 
         if (newLine)
         {
-            Console.WriteLine();
+            // STDERR: human-facing newline, keep STDOUT clean for machine data
+            Console.Error.WriteLine();
         }
 
         Console.ResetColor();
@@ -246,7 +254,8 @@ public static class CliUtil
     public static void Write(string text) { Console.Error.Write(text); }
 
     /// <summary>
-    /// Writes structured data to stdout for machine consumption (e.g., JSON for automation)
+    /// Used for writing to stdout stream read by machine processes like AI agents or automation scripts. <br />
+    /// It can write structured data objects as json (useful for returning success payloads) or plain text (useful for returning error codes).
     /// </summary>
     /// <typeparam name="T">Type of data to serialize</typeparam>
     /// <param name="data">Data object to serialize and write</param>
@@ -268,17 +277,40 @@ public static class CliUtil
         Console.Out.WriteLine(output);
     }
 
+    /// <summary>Writes <paramref name="data"/> as indented JSON on stdout.</summary>
+    public static void WriteJsonData<T>(T data) => WriteData(data, DataFormatEnum.Json);
+
+    /// <summary>Writes <paramref name="data"/> as plain text on stdout (e.g. failure codes).</summary>
+    public static void WriteTextData<T>(T data) => WriteData(data, DataFormatEnum.Text);
+
     /// <summary>
-    /// 
+    /// Reads a single line of input with optional prefill and caret editing.<br />
+    /// Supports Left/Right arrows, Home/End, Delete, Backspace, and insert-at-caret.<br />
+    /// Enter submits the line and discards any further keys already queued (e.g. rest of a multi-line paste)<br />
+    /// so leftover lines cannot flood the next prompt. Multi-line capture is a separate API when needed.<br />
+    /// Echoes to STDERR so STDOUT stays clean for machine-readable data.
     /// </summary>
-    /// <param name="color"></param>
+    /// <param name="color">Foreground color for echoed input characters.</param>
     /// <param name="masked">
-    /// If set to true, masks user input with asterisk so that it's not visible on the screen. <br />
-    /// Can be used for password input, or other sensitive data input.</param>
-    /// <returns></returns>
-    public static string ReadLn(ConsoleColor? color = null, bool masked = false)
+    /// If true, masks input with asterisks (e.g. passwords).<br />
+    /// Prefill via <paramref name="initialValue"/> is ignored when masked.
+    /// </param>
+    /// <param name="initialValue">Optional text seeded into the buffer and shown for editing (ignored when masked).</param>
+    /// <returns>The raw input string (not trimmed).</returns>
+    public static string ReadLn(ConsoleColor? color = null, bool masked = false, string? initialValue = null)
     {
+        DiscardPendingConsoleKeys();
+
         var input = new StringBuilder();
+        var caret = 0;
+
+        if (!masked && !string.IsNullOrEmpty(initialValue))
+        {
+            input.Append(initialValue);
+            caret = input.Length;
+            WriteInputChars(initialValue, color, masked: false);
+        }
+
         while (true)
         {
             var keyInfo = Console.ReadKey(intercept: true);
@@ -286,37 +318,136 @@ public static class CliUtil
 
             if (key == ConsoleKey.Enter)
             {
-                Console.WriteLine();
+                Console.Error.WriteLine();
+                DiscardPendingConsoleKeys();
                 break;
             }
-            else if (key == ConsoleKey.Backspace && input.Length > 0)
+
+            if (key == ConsoleKey.LeftArrow)
             {
-                input.Remove(input.Length - 1, 1);
-                Console.Write("\b \b");
+                if (caret > 0)
+                {
+                    caret--;
+                    Console.Error.Write('\b');
+                }
+                continue;
             }
-            else if (!char.IsControl(keyInfo.KeyChar))
+
+            if (key == ConsoleKey.RightArrow)
             {
-                char character = keyInfo.KeyChar;
-                input.Append(character);
-
-                // Determine what character to display on screen
-                char displayChar = masked ? '*' : character;
-
-                // Handle coloring
-                if (color.HasValue)
+                if (caret < input.Length)
                 {
-                    var originalColor = Console.ForegroundColor;
-                    Console.ForegroundColor = color.Value;
-                    Console.Write(displayChar);
-                    Console.ForegroundColor = originalColor;
+                    WriteInputChar(input[caret], color, masked);
+                    caret++;
                 }
-                else
+                continue;
+            }
+
+            if (key == ConsoleKey.Home)
+            {
+                while (caret > 0)
                 {
-                    Console.Write(displayChar);
+                    caret--;
+                    Console.Error.Write('\b');
                 }
+                continue;
+            }
+
+            if (key == ConsoleKey.End)
+            {
+                while (caret < input.Length)
+                {
+                    WriteInputChar(input[caret], color, masked);
+                    caret++;
+                }
+                continue;
+            }
+
+            if (key == ConsoleKey.Delete)
+            {
+                if (caret < input.Length)
+                {
+                    input.Remove(caret, 1);
+                    RedrawInputSuffix(input, caret, color, masked);
+                }
+                continue;
+            }
+
+            if (key == ConsoleKey.Backspace)
+            {
+                if (caret > 0)
+                {
+                    caret--;
+                    input.Remove(caret, 1);
+                    Console.Error.Write('\b');
+                    RedrawInputSuffix(input, caret, color, masked);
+                }
+                continue;
+            }
+
+            if (!char.IsControl(keyInfo.KeyChar))
+            {
+                input.Insert(caret, keyInfo.KeyChar);
+                RedrawInputSuffix(input, caret, color, masked);
+                WriteInputChar(input[caret], color, masked);
+                caret++;
             }
         }
+
         return input.ToString();
+    }
+
+    /// <summary>
+    /// Drops keys already queued in the console input buffer (typically leftover multi-line paste).
+    /// </summary>
+    private static void DiscardPendingConsoleKeys()
+    {
+        while (Console.KeyAvailable)
+        {
+            Console.ReadKey(intercept: true);
+        }
+    }
+
+    /// <summary>
+    /// Rewrites buffer content from <paramref name="caret"/> to end, clears one leftover column, then returns the cursor to <paramref name="caret"/>.
+    /// </summary>
+    private static void RedrawInputSuffix(StringBuilder input, int caret, ConsoleColor? color, bool masked)
+    {
+        var remaining = input.Length - caret;
+        for (var i = caret; i < input.Length; i++)
+        {
+            WriteInputChar(input[i], color, masked);
+        }
+
+        Console.Error.Write(' ');
+        for (var i = 0; i < remaining + 1; i++)
+        {
+            Console.Error.Write('\b');
+        }
+    }
+
+    private static void WriteInputChars(string text, ConsoleColor? color, bool masked)
+    {
+        foreach (var ch in text)
+        {
+            WriteInputChar(ch, color, masked);
+        }
+    }
+
+    private static void WriteInputChar(char character, ConsoleColor? color, bool masked)
+    {
+        var displayChar = masked ? '*' : character;
+        if (color.HasValue)
+        {
+            var originalColor = Console.ForegroundColor;
+            Console.ForegroundColor = color.Value;
+            Console.Error.Write(displayChar);
+            Console.ForegroundColor = originalColor;
+        }
+        else
+        {
+            Console.Error.Write(displayChar);
+        }
     }
 
     public static string ReadLnDim(bool masked = false) { return ReadLn(ConsoleColor.DarkGray, masked); }
@@ -395,18 +526,54 @@ public static class CliUtil
     }
 
     /// <summary>
-    /// Writes the prompt text (no newline) and reads a line of input from the user.
+    /// Writes the prompt text (no newline) and reads a single line of input from the user.<br />
+    /// Multi-line paste after Enter is discarded by <see cref="ReadLn"/> so it cannot flood later prompts.
     /// </summary>
     /// <param name="promptText">The prompt to display (e.g. "Enter domain name: ").</param>
     /// <param name="promptColor">Color for the prompt text; defaults to primary when null.</param>
     /// <param name="inputColor">Color for the user's input as they type; defaults to promptColor when null.</param>
     /// <param name="masked">If true, masks input (e.g. for passwords).</param>
     /// <param name="indent">Number of spaces to indent the prompt.</param>
+    /// <param name="defaultValue">
+    /// Optional editable prefill shown in the input buffer (ignored when masked).<br />
+    /// User can accept with Enter or edit with caret keys.
+    /// </param>
     /// <returns>The trimmed user input.</returns>
-    public static string Prompt(string promptText, ConsoleColor? promptColor = null, ConsoleColor? inputColor = null, bool masked = false, int indent = 0)
+    public static string Prompt(
+        string promptText,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? inputColor = null,
+        bool masked = false,
+        int indent = 0,
+        string? defaultValue = null)
     {
         WriteFormat(promptText, false, indent, promptColor ?? Color.Primary);
-        return ReadLn(inputColor ?? promptColor ?? Color.Primary, masked).Trim();
+        var initialValue = masked ? null : defaultValue;
+        return ReadLn(inputColor ?? promptColor ?? Color.Primary, masked, initialValue).Trim();
+    }
+
+    /// <summary>
+    /// Prompts with a bare label and appends the label separator, so label text stays free of chrome.<br />
+    /// Use <see cref="Prompt"/> directly when the prompt must end with something other than a separator.
+    /// </summary>
+    /// <param name="label">Label without trailing separator (e.g. "Domain name").</param>
+    /// <param name="promptColor">Color for the prompt text; defaults to primary when null.</param>
+    /// <param name="inputColor">Color for the user's input as they type; defaults to promptColor when null.</param>
+    /// <param name="masked">If true, masks input (e.g. for passwords).</param>
+    /// <param name="indent">Number of spaces to indent the prompt.</param>
+    /// <param name="defaultValue">Optional editable prefill shown in the input buffer (ignored when masked).</param>
+    /// <returns>The trimmed user input.</returns>
+    public static string PromptLabel(
+        string label,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? inputColor = null,
+        bool masked = false,
+        int indent = 0,
+        string? defaultValue = null)
+    {
+        const string labelSeparator = ": ";
+
+        return Prompt($"{label}{labelSeparator}", promptColor, inputColor, masked, indent, defaultValue);
     }
 
     /// <summary>
@@ -543,5 +710,147 @@ public static class CliUtil
 
         var index = Array.IndexOf(displayStrings, stringResult.Data);
         return index >= 0 ? Result<T>.Success(options[index]) : Result<T>.Success(options[0]); // Should always find a match
+    }
+
+    /// <summary>
+    /// Prompts the user to select one or more options from a numbered list. <br/>
+    /// Accepts comma-separated choices and inclusive ranges (e.g. <c>1,2</c> or <c>1-3</c>). <br/>
+    /// Press Enter with no input to confirm an empty selection.
+    /// </summary>
+    /// <param name="prompt">The prompt text to display before the options.</param>
+    /// <param name="options">The list of string options to choose from.</param>
+    /// <param name="promptColor">Color for the prompt text.</param>
+    /// <param name="optionsColor">Color for the numbered options list.</param>
+    /// <param name="inputColor">Color for the user's input when typing their choice.</param>
+    /// <param name="indent">Number of spaces to indent the entire prompt.</param>
+    /// <returns>Result with selected option strings (possibly empty).</returns>
+    public static Result<IReadOnlyList<string>> PromptOptionsMulti(
+        string prompt,
+        IReadOnlyList<string> options,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? optionsColor = null,
+        ConsoleColor? inputColor = null,
+        int indent = 0)
+    {
+        if (options.Count == 0)
+            return Result<IReadOnlyList<string>>.Success(Array.Empty<string>());
+
+        WriteLnFormat(prompt, indent, promptColor);
+
+        for (var i = 0; i < options.Count; i++)
+            WriteLn($"{i + 1}) {options[i]}", optionsColor ?? Color.Primary, indent);
+
+        WriteLn();
+
+        while (true)
+        {
+            var choiceStr = Prompt(
+                $"Select options (e.g. 1,2 or 1-{options.Count}): ",
+                promptColor,
+                inputColor,
+                false,
+                indent);
+
+            if (string.IsNullOrWhiteSpace(choiceStr))
+                return Result<IReadOnlyList<string>>.Success(Array.Empty<string>());
+
+            if (!TryParseOptionSelection(choiceStr, options.Count, out var selectedIndexes))
+            {
+                WriteLnWarning(
+                    $"Please enter option numbers between 1 and {options.Count} (e.g. 1,2 or 1-{options.Count}), or press Enter for none.",
+                    indent);
+                WriteLn();
+                continue;
+            }
+
+            var selected = selectedIndexes
+                .OrderBy(i => i)
+                .Select(i => options[i - 1])
+                .ToList();
+
+            return Result<IReadOnlyList<string>>.Success(selected);
+        }
+    }
+
+    /// <summary>
+    /// Prompts the user to select one or more objects from a numbered list. <br/>
+    /// Thin wrapper: displays via <paramref name="displaySelector"/>, delegates to string <see cref="PromptOptionsMulti"/>.
+    /// </summary>
+    /// <typeparam name="T">The type of objects in the list.</typeparam>
+    /// <param name="prompt">The prompt text to display before the options.</param>
+    /// <param name="options">The list of objects to choose from.</param>
+    /// <param name="displaySelector">Function to get the display string for each object.</param>
+    /// <param name="promptColor">Color for the prompt text.</param>
+    /// <param name="optionsColor">Color for the numbered options list.</param>
+    /// <param name="inputColor">Color for the user's input when typing their choice.</param>
+    /// <param name="indent">Number of spaces to indent the entire prompt.</param>
+    /// <returns>Result with selected objects (possibly empty).</returns>
+    public static Result<IReadOnlyList<T>> PromptOptionsMulti<T>(
+        string prompt,
+        IReadOnlyList<T> options,
+        Func<T, string> displaySelector,
+        ConsoleColor? promptColor = null,
+        ConsoleColor? optionsColor = null,
+        ConsoleColor? inputColor = null,
+        int indent = 0)
+    {
+        var displayStrings = options.Select(displaySelector).ToArray();
+        var stringResult = PromptOptionsMulti(
+            prompt, displayStrings, promptColor, optionsColor, inputColor, indent);
+
+        if (stringResult.IsFailure)
+            return Result<IReadOnlyList<T>>.FailWithMessage(stringResult.Message!);
+
+        var selected = new List<T>();
+        foreach (var display in stringResult.Data!)
+        {
+            var index = Array.IndexOf(displayStrings, display);
+            if (index >= 0)
+                selected.Add(options[index]);
+        }
+
+        return Result<IReadOnlyList<T>>.Success(selected);
+    }
+
+    private static bool TryParseOptionSelection(string input, int optionCount, out List<int> selectedOneBased)
+    {
+        selectedOneBased = [];
+        var seen = new HashSet<int>();
+
+        foreach (var token in input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var dash = token.IndexOf('-');
+            if (dash > 0 && dash < token.Length - 1)
+            {
+                if (!int.TryParse(token[..dash], out var start)
+                    || !int.TryParse(token[(dash + 1)..], out var end))
+                    return false;
+
+                if (start > end)
+                    (start, end) = (end, start);
+
+                for (var n = start; n <= end; n++)
+                {
+                    if (n < 1 || n > optionCount)
+                        return false;
+
+                    if (seen.Add(n))
+                        selectedOneBased.Add(n);
+                }
+
+                continue;
+            }
+
+            if (!int.TryParse(token, out var choice))
+                return false;
+
+            if (choice < 1 || choice > optionCount)
+                return false;
+
+            if (seen.Add(choice))
+                selectedOneBased.Add(choice);
+        }
+
+        return selectedOneBased.Count > 0;
     }
 }

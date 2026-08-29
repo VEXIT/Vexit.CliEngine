@@ -26,6 +26,12 @@ public class OptionAttribute : Attribute
     public string? ShortName { get; }
     public string Description { get; }
     public bool IsRequired { get; set; } = false;
+
+    /// <summary>
+    /// When true, omitted from generated command help (e.g. inherited process flags on <see cref="BaseClasses.CmdBase"/>).
+    /// </summary>
+    public bool HideFromHelp { get; set; }
+
     internal bool IsMultiValue { get; private set; }
     public int MinCount { get; set; } = 0;
     public int MaxCount { get; set; } = 0; // 0 means unlimited
